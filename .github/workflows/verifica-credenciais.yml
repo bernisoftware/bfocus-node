@@ -1,0 +1,20 @@
+# TEMPORÁRIO — verifica as credenciais de publicação (não publica nada; imprime só ok/falhou).
+# Some no 1º release: o scripts/release-sdks.sh do monorepo substitui o conteúdo deste espelho.
+name: verifica-credenciais
+on: [push, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: npm aceita o NPM_TOKEN
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          [ -n "$NODE_AUTH_TOKEN" ] || { echo "::error::NPM_TOKEN vazio"; exit 1; }
+          echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > ~/.npmrc
+          if who=$(npm whoami 2>/dev/null); then echo "OK: npm aceitou o token (conta: $who)"
+          else echo "::error::npm recusou o NPM_TOKEN"; exit 1; fi
+          if npm org ls bfocus >/dev/null 2>&1; then echo "OK: a org @bfocus existe e essa conta a enxerga"
+          else echo "::warning::org @bfocus não encontrada para essa conta — criar em npmjs.com"; fi
