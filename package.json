@@ -1,0 +1,63 @@
+{
+  "name": "@bfocus/sdk",
+  "version": "0.1.0",
+  "description": "SDK oficial do bFocus para Node.js/TypeScript — clientes, produtos, release notes, base de conhecimento e agentes de IA.",
+  "license": "MIT",
+  "author": "Berni Software",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "clean": "node scripts/rm.mjs dist dist-test",
+    "build": "node scripts/rm.mjs dist && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/cjs-package.mjs",
+    "build:test": "node scripts/rm.mjs dist-test && tsc -p tsconfig.test.json",
+    "test": "npm run build:test && node --test dist-test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "sync:conformance": "node scripts/sync-conformance.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "bfocus",
+    "sdk",
+    "api",
+    "crm",
+    "helpdesk",
+    "knowledge-base",
+    "release-notes"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bernisoftware/bfocus-node.git"
+  },
+  "homepage": "https://bfocus.com.br",
+  "bugs": {
+    "url": "https://github.com/bernisoftware/bfocus-node/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "~5.9.2"
+  }
+}
