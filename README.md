@@ -1,7 +1,7 @@
 # @bfocus/sdk
 
-SDK oficial do **bFocus** para Node.js e TypeScript: clientes, contatos, produtos, release notes,
-base de conhecimento e agentes de IA.
+SDK oficial do **bFocus** para Node.js e TypeScript: clientes, contatos, pessoas, lotes,
+identificadores extras, produtos, release notes, base de conhecimento e agentes de IA.
 
 - ESM **e** CommonJS, com tipos (`.d.ts`) para todas as entidades
 - **Zero dependências de runtime** — usa o `fetch` nativo do Node 18+
@@ -37,7 +37,7 @@ que a integração precisa. Toda requisição vai com `Authorization: Bearer <ch
 
 | Escopo | Libera |
 |---|---|
-| `customers:read` / `customers:write` | clientes, contatos, produtos vinculados e interações |
+| `customers:read` / `customers:write` | clientes, contatos, pessoas, lotes, identificadores extras, produtos vinculados e interações |
 | `products:read` / `products:write` | catálogo de produtos |
 | `release_notes:read` / `release_notes:write` | release notes |
 | `kb:read` / `kb:write` | base de conhecimento |
@@ -121,6 +121,146 @@ await bf.customers.interactions.create("ERP 1042", "Pedido 1042 faturado.", {
   authorEmail: "carla@suaempresa.com.br", // usuário do bFocus que assina; omitido = "sistema"
 });
 const history = await bf.customers.interactions.list("ERP 1042", { pageSize: 20 });
+```
+
+## Pessoas
+
+Pessoas são quem, do lado do cliente, abre chamados pelo widget/portal. O id da pessoa é o do SEU
+sistema — o mesmo `user.externalId` que você assina no widget (por isso **sem `:`**).
+
+```ts
+// Cria/atualiza. Só o que você passa muda; null limpa.
+const p = await bf.people.upsert("erp-1042", "app-77", {
+  name: "Paula Reis",
+  email: "paula@padaria.example",
+  role: "Financeiro",
+  isPrimary: true,
+  extraEmails: ["paula.reis@pessoal.example"],
+});
+p.status; // "created" | "updated" | "unchanged"
+
+const people = await bf.people.list("erp-1042");     // com e sem acesso
+await bf.people.delete("erp-1042", "app-77");         // retira o acesso (devolve a pessoa com access: false)
+await bf.people.upsert("erp-1042", "app-77", { access: true }); // devolve o acesso
+```
+
+- **Nunca duplica**: se o e-mail (ou o telefone) já é de uma pessoa que chegou antes — por e-mail,
+  pelo widget ou por outro sistema — o upsert **adota** essa pessoa e passa a reconhecê-la pelo seu id.
+- A mesma pessoa informada com **outro cliente** é transferida para ele.
+- `delete` não apaga: retira o acesso e a pessoa continua no histórico dos chamados.
+- Erros comuns (`err.code`): `CUSTOMER_NOT_FOUND`, `NAME_REQUIRED` (ao criar), `PERSON_EMAIL_TAKEN`,
+  `PERSON_PHONE_TAKEN`, `PERSON_EMAIL_STAFF` (e-mail de alguém da sua equipe no bFocus).
+
+## Lotes
+
+`customers.batch` e `people.batch` gravam **até 500 itens por chamada** (`BATCH_MAX`). Acima disso
+a SDK lança `TypeError` **antes de qualquer requisição** — ela não divide sozinha, para que o `index`
+de cada resultado seja sempre a posição no lote que você enviou. Divida você:
+
+```ts
+import { BATCH_MAX } from "@bfocus/sdk"; // 500
+import type { CustomerBatchItem, PersonBatchItem } from "@bfocus/sdk";
+
+const items: CustomerBatchItem[] = erpCustomers.map((c) => ({
+  externalId: `erp-${c.id}`,   // obrigatório em cada item
+  name: c.name,
+  document: c.cnpj,
+  email: c.email ?? undefined, // undefined = não mexe; null = limpa
+}));
+
+for (let i = 0; i < items.length; i += BATCH_MAX) {
+  const slice = items.slice(i, i + BATCH_MAX);
+  const { results, summary } = await bf.customers.batch(slice);
+  for (const r of results) {
+    if (r.status === "error") console.error(slice[r.index]!.externalId, r.error, r.code);
+  }
+}
+
+// Pessoas: cliente + id da pessoa + os mesmos campos do people.upsert
+const people: PersonBatchItem[] = [
+  { customerExternalId: "erp-1042", externalId: "app-77", name: "Paula Reis", email: "paula@padaria.example" },
+];
+await bf.people.batch(people);
+```
+
+Cada item do resultado traz `index` (posição no lote), `status` (`created`, `updated`, `unchanged`
+ou `error`), `external_id`, `merged_into` (o id que passou a valer, quando o cadastro foi unificado a
+outro — atualize do seu lado), `error` (código estável) e `code` (status HTTP que o item teria
+sozinho). `summary` soma `created`, `updated`, `unchanged` e `error`. **Um item com erro não desfaz
+os outros.** Lista vazia devolve o resultado zerado sem fazer requisição. Cada chamada é uma escrita
+com a própria `Idempotency-Key` (ou a sua, em `{ idempotencyKey }`).
+
+## Identificadores extras
+
+Ligue o id de **outro sistema seu** (CRM, e-commerce…) ao mesmo cadastro, para que ele também o
+encontre. Idempotente: ligar de novo não muda nada.
+
+```ts
+const c = await bf.customers.identifiers.add("erp-1042", "crm-88", { label: "CRM" });
+c.identifiers; // [{ external_id: "crm-88", label: "CRM", source: "api" }]
+await bf.customers.identifiers.remove("erp-1042", "crm-88");
+
+await bf.people.identifiers.add("app-77", "crm-p5");   // sem label: a requisição vai sem corpo
+await bf.people.identifiers.remove("app-77", "crm-p5");
+```
+
+Se o id já pertence a **outro** cadastro, a API responde 409 → `ConflictError` com
+`code = "IDENTIFIER_IN_USE"`. Remover um id que não está ligado → `NotFoundError`
+(`IDENTIFIER_NOT_FOUND`).
+
+## Sincronizar clientes e usuários do seu sistema
+
+**Ids com o prefixo do sistema, sem `:`** — a assinatura do widget recusa `:`. Use `-` como
+separador (`erp-1042` para clientes, `app-77` para pessoas) ou UUIDs puros: vários sistemas seus
+convivem no mesmo bFocus sem colisão. O id da pessoa é o `user.externalId` que você assina no widget.
+
+**Carga inicial (no deploy da integração):** clientes em fatias de 500 → produto de cada cliente →
+pessoas em fatias de 500. Confira `summary.error` e registre os itens com erro.
+
+```ts
+import { BATCH_MAX, Bfocus } from "@bfocus/sdk";
+import type { BatchResult } from "@bfocus/sdk";
+
+async function inChunks<T>(items: T[], send: (slice: T[]) => Promise<BatchResult>) {
+  for (let i = 0; i < items.length; i += BATCH_MAX) {
+    const slice = items.slice(i, i + BATCH_MAX);
+    const { results, summary } = await send(slice);
+    if (summary.error > 0) {
+      for (const r of results.filter((x) => x.status === "error")) log.warn({ item: slice[r.index], error: r.error });
+    }
+  }
+}
+
+await inChunks(allCustomers.map(toCustomerItem), (s) => bf.customers.batch(s));
+for (const c of allCustomers) await bf.customers.products.attach(`erp-${c.id}`, "erp-cloud");
+await inChunks(allUsers.map(toPersonItem), (s) => bf.people.batch(s));
+```
+
+**Depois, no dia a dia:** cada evento do seu sistema vira uma chamada.
+
+| No seu sistema | No bFocus |
+|---|---|
+| criou/alterou cliente | `bf.customers.upsert(id, {...})` |
+| cliente passou a usar um produto | `bf.customers.products.attach(id, slug)` |
+| criou/alterou usuário | `bf.people.upsert(customerId, userId, {...})` |
+| excluiu/desativou usuário | `bf.people.delete(customerId, userId)` |
+| excluiu cliente | `bf.customers.delete(id)` |
+
+Se uma resposta de lote trouxer `merged_into`, atualize o id do seu lado.
+
+**Nunca bloqueie a requisição do seu usuário esperando o bFocus.** Enfileire (job/outbox) e deixe um
+worker chamar a SDK, tentando de novo com backoff. A SDK já repete `429`/`5xx` com a mesma
+`Idempotency-Key`; a fila cobre as indisponibilidades longas.
+
+```ts
+// No handler do seu app: só enfileira.
+await queue.add("bfocus:person", { customerId: "erp-1042", userId: "app-77", name, email });
+
+// No worker (a fila repete com backoff se lançar):
+worker.process("bfocus:person", async (job) => {
+  const { customerId, userId, ...fields } = job.data;
+  await bf.people.upsert(customerId, userId, fields, { idempotencyKey: `person-${userId}-${job.id}` });
+});
 ```
 
 ## Produtos
@@ -302,6 +442,25 @@ import { signWidgetIdentity } from "@bfocus/sdk";
 // HMAC-SHA256(secret, "v1:" + userExternalId + ":" + customerExternalId), hex minúsculo
 const signature = signWidgetIdentity(process.env.BFOCUS_WIDGET_SECRET!, user.id, user.companyId);
 ```
+
+### Identidade do widget v2 (com validade)
+
+A v2 carrega o instante da assinatura e **vence**: a API aceita de 7 dias atrás até 5 minutos à
+frente. Gere a cada renderização da página — nunca guarde. Vai no mesmo lugar da v1 (`userHash` do
+widget); a v1 continua aceita.
+
+```ts
+import { signWidgetIdentityV2 } from "@bfocus/sdk";
+
+// "v2.<ts>.<hex>": ts = segundos unix; hex = HMAC-SHA256(secret, "v2:" + ts + ":" + user + ":" + customer)
+const userHash = signWidgetIdentityV2(process.env.BFOCUS_WIDGET_SECRET!, "app-77", "erp-1042");
+
+// Instante fixo (testes): Date ou segundos unix (não milissegundos).
+signWidgetIdentityV2(secret, "app-77", "erp-1042", { now: 1789000000 });
+```
+
+O id do usuário **não pode ter `:`** (é o separador; a SDK lança `TypeError`). Segredo ou ids vazios
+e instante negativo também lançam `TypeError`.
 
 ## Requisitos
 

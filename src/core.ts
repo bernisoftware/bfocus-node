@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { BfocusError, NetworkError, errorForStatus } from "./errors.js";
-import type { Page } from "./types.js";
+import type { BatchResult, IdentifierAddParams, Page } from "./types.js";
 import { CLIENT_ID } from "./version.js";
 
 /** URL base padrão (produção). */
@@ -148,6 +148,46 @@ export function pick(
   }
   return out;
 }
+
+// ── Lotes (customers.batch / people.batch) ───────────────────────────────────
+
+/**
+ * Máximo de itens por chamada de `customers.batch` / `people.batch`. Acima disso a SDK lança
+ * `TypeError` antes de qualquer requisição — ela NÃO divide sozinha, para que o `index` de cada
+ * resultado seja sempre a posição no lote que você enviou.
+ */
+export const BATCH_MAX = 500;
+
+/** Valida a lista de um lote: precisa ser array com até `BATCH_MAX` itens. */
+export function checkBatch(op: string, items: unknown): asserts items is readonly unknown[] {
+  if (!Array.isArray(items)) throw new TypeError(`bFocus: ${op} espera uma lista de itens.`);
+  if (items.length > BATCH_MAX) {
+    throw new TypeError(
+      `bFocus: ${op} aceita até ${BATCH_MAX} itens por chamada (recebeu ${items.length}); ` +
+        `divida em lotes de ${BATCH_MAX}.`,
+    );
+  }
+}
+
+/** Resultado de lote vazio (nenhuma requisição foi feita). */
+export const emptyBatchResult = (): BatchResult => ({
+  results: [],
+  summary: { created: 0, updated: 0, unchanged: 0, error: 0 },
+});
+
+/** `external_id` obrigatório num item de lote (string não vazia). */
+export function requireItemId(value: unknown, name: string): string {
+  if (typeof value !== "string" || value === "") {
+    throw new TypeError(`bFocus: ${name} é obrigatório (string não vazia).`);
+  }
+  return value;
+}
+
+/** Corpo de `identifiers.add`: `{"label": …}` só quando `label` veio; senão, sem corpo. */
+export const identifierBody = (params: IdentifierAddParams | undefined): Record<string, unknown> | undefined => {
+  const body = pick(params, { label: "label" });
+  return Object.keys(body).length ? body : undefined;
+};
 
 // ── Novas tentativas ─────────────────────────────────────────────────────────
 

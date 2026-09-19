@@ -1,13 +1,17 @@
-import { encodeSegment, paginate, pick } from "../core.js";
+import { checkBatch, emptyBatchResult, encodeSegment, identifierBody, paginate, pick, requireItemId } from "../core.js";
 import type { RequestOptions, Transport } from "../core.js";
 import type {
+  BatchResult,
   Contact,
   ContactUpsertParams,
   Customer,
+  CustomerBatchItem,
   CustomerListAllParams,
   CustomerListParams,
   CustomerUpsertParams,
+  CustomerWithIdentifiers,
   Deleted,
+  IdentifierAddParams,
   Interaction,
   InteractionCreateParams,
   InteractionListAllParams,
@@ -36,6 +40,47 @@ const CONTACT_FIELDS = {
 };
 
 const customerPath = (externalId: string) => `/customers/${encodeSegment(externalId, "externalId")}`;
+
+/** Identificadores extras de um cliente — `bf.customers.identifiers`. */
+export class CustomerIdentifiers {
+  readonly #t: Transport;
+
+  constructor(transport: Transport) {
+    this.#t = transport;
+  }
+
+  /**
+   * Liga o id de outro sistema seu (`extraId`) ao mesmo cliente. Idempotente. Se o id já é de
+   * OUTRO cadastro, a API responde 409 `IDENTIFIER_IN_USE` (`ConflictError`).
+   * `PUT /customers/{external_id}/identifiers/{extra_id}`
+   */
+  add(
+    externalId: string,
+    extraId: string,
+    params: IdentifierAddParams = {},
+    options?: RequestOptions,
+  ): Promise<CustomerWithIdentifiers> {
+    return this.#t.data(
+      {
+        method: "PUT",
+        path: `${customerPath(externalId)}/identifiers/${encodeSegment(extraId, "extraId")}`,
+        body: identifierBody(params),
+      },
+      options,
+    );
+  }
+
+  /** Desliga um identificador extra do cliente. `DELETE /customers/{external_id}/identifiers/{extra_id}` */
+  remove(externalId: string, extraId: string, options?: RequestOptions): Promise<CustomerWithIdentifiers> {
+    return this.#t.data(
+      {
+        method: "DELETE",
+        path: `${customerPath(externalId)}/identifiers/${encodeSegment(extraId, "extraId")}`,
+      },
+      options,
+    );
+  }
+}
 
 /** Contatos de um cliente — `bf.customers.contacts`. */
 export class CustomerContacts {
@@ -179,12 +224,15 @@ export class Customers {
   readonly products: CustomerProducts;
   /** Interações (linha do tempo) do cliente. */
   readonly interactions: CustomerInteractions;
+  /** Identificadores extras (ids de outros sistemas seus) do cliente. */
+  readonly identifiers: CustomerIdentifiers;
 
   constructor(transport: Transport) {
     this.#t = transport;
     this.contacts = new CustomerContacts(transport);
     this.products = new CustomerProducts(transport);
     this.interactions = new CustomerInteractions(transport);
+    this.identifiers = new CustomerIdentifiers(transport);
   }
 
   /**
@@ -196,6 +244,24 @@ export class Customers {
       { method: "PUT", path: customerPath(externalId), body: pick(params, CUSTOMER_FIELDS) },
       options,
     );
+  }
+
+  /**
+   * Cria/atualiza até {@link BATCH_MAX} (500) clientes numa requisição. Cada item leva os mesmos
+   * campos de `upsert` + `externalId`; só o que veio muda. Acima de 500 itens lança `TypeError`
+   * sem ir à rede — a SDK NÃO divide sozinha: divida em fatias de 500 (o `index` de cada resultado
+   * é a posição no lote enviado). Um item com erro não desfaz os outros (veja `results[i].status`
+   * e `summary.error`). Lista vazia devolve o resultado zerado sem requisição.
+   * `POST /customers/batch`
+   */
+  async batch(items: readonly CustomerBatchItem[], options?: RequestOptions): Promise<BatchResult> {
+    checkBatch("customers.batch", items);
+    const body = items.map((item, i) => ({
+      external_id: requireItemId(item?.externalId, `items[${i}].externalId`),
+      ...pick(item, CUSTOMER_FIELDS),
+    }));
+    if (body.length === 0) return emptyBatchResult();
+    return this.#t.data({ method: "POST", path: "/customers/batch", body: { items: body } }, options);
   }
 
   /** Busca um cliente. `GET /customers/{external_id}` */

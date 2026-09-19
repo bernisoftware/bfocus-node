@@ -22,6 +22,7 @@ import {
   VERSION,
   ValidationError,
   signWidgetIdentity,
+  signWidgetIdentityV2,
 } from "@bfocus/sdk";
 import type { Page } from "@bfocus/sdk";
 import { startServer } from "./helpers/server.js";
@@ -54,6 +55,13 @@ interface Cases {
   sdk_helper_ops?: Record<string, string>;
   cases: Case[];
   signatures: { secret: string; user_external_id: string; customer_external_id: string; expected: string }[];
+  signatures_v2: {
+    secret: string;
+    user_external_id: string;
+    customer_external_id: string;
+    timestamp: number;
+    expected: string;
+  }[];
 }
 
 const MONOREPO_CASES = new URL("../../conformance/cases.json", import.meta.url);
@@ -129,6 +137,22 @@ const OPS: Record<string, (bf: Bfocus, a: Args) => Promise<unknown>> = {
     collect(bf.customers.interactions.listAll(a.external_id, params(a, "external_id"))),
   "customers.interactions.create": (bf, a) =>
     bf.customers.interactions.create(a.external_id, a.content, params(a, "external_id", "content")),
+  "customers.batch": (bf, a) => bf.customers.batch(a.items.map((x: Args) => params(x))),
+  "customers.identifiers.add": (bf, a) =>
+    bf.customers.identifiers.add(a.external_id, a.extra_id, params(a, "external_id", "extra_id")),
+  "customers.identifiers.remove": (bf, a) => bf.customers.identifiers.remove(a.external_id, a.extra_id),
+  "people.upsert": (bf, a) =>
+    bf.people.upsert(
+      a.customer_external_id,
+      a.person_external_id,
+      params(a, "customer_external_id", "person_external_id"),
+    ),
+  "people.list": (bf, a) => bf.people.list(a.customer_external_id),
+  "people.delete": (bf, a) => bf.people.delete(a.customer_external_id, a.person_external_id),
+  "people.batch": (bf, a) => bf.people.batch(a.items.map((x: Args) => params(x))),
+  "people.identifiers.add": (bf, a) =>
+    bf.people.identifiers.add(a.person_external_id, a.extra_id, params(a, "person_external_id", "extra_id")),
+  "people.identifiers.remove": (bf, a) => bf.people.identifiers.remove(a.person_external_id, a.extra_id),
   "products.list": (bf, a) => bf.products.list(params(a)),
   "products.get": (bf, a) => bf.products.get(a.slug),
   "products.upsert": (bf, a) => bf.products.upsert(a.slug, params(a, "slug")),
@@ -342,6 +366,24 @@ describe("conformidade: assinaturas do widget", () => {
   for (const [i, v] of CASES.signatures.entries()) {
     it(`vetor ${i + 1}`, () => {
       assert.equal(signWidgetIdentity(v.secret, v.user_external_id, v.customer_external_id), v.expected);
+    });
+  }
+});
+
+describe("conformidade: assinaturas v2 do widget", () => {
+  for (const [i, v] of CASES.signatures_v2.entries()) {
+    it(`vetor ${i + 1}`, () => {
+      assert.equal(
+        signWidgetIdentityV2(v.secret, v.user_external_id, v.customer_external_id, { now: v.timestamp }),
+        v.expected,
+      );
+      assert.equal(
+        signWidgetIdentityV2(v.secret, v.user_external_id, v.customer_external_id, {
+          now: new Date(v.timestamp * 1000 + 999),
+        }),
+        v.expected,
+        "Date é truncado para segundos inteiros",
+      );
     });
   }
 });

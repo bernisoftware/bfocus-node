@@ -14,6 +14,7 @@ const require = createRequire(import.meta.url);
 
 const RUNTIME_EXPORTS = [
   "AuthenticationError",
+  "BATCH_MAX",
   "Bfocus",
   "BfocusError",
   "ConflictError",
@@ -26,6 +27,7 @@ const RUNTIME_EXPORTS = [
   "VERSION",
   "ValidationError",
   "signWidgetIdentity",
+  "signWidgetIdentityV2",
 ];
 const VECTOR = ["bf_whs_x", "USR-1", "ACME-1", "9a15d2527b855a048094ea7826c3b0f16ae5db3035ac3537324d45007ef15141"] as const;
 
@@ -51,6 +53,9 @@ describe("pacote", () => {
     assert.equal(cjs.VERSION, esm.VERSION);
     const client = new cjs.Bfocus({ apiKey: "k" });
     assert.ok(client.kb.articles);
+    assert.ok(client.people.identifiers);
+    assert.ok(client.customers.identifiers);
+    assert.equal(cjs.BATCH_MAX, 500);
     assert.ok(new cjs.NotFoundError({ code: "X", status: 404 }) instanceof cjs.BfocusError);
     assert.equal(cjs.signWidgetIdentity(VECTOR[0], VECTOR[1], VECTOR[2]), VECTOR[3]);
   });

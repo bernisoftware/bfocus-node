@@ -3,6 +3,7 @@ import type { FetchLike, SleepFn } from "./core.js";
 import { AiAgents } from "./resources/aiAgents.js";
 import { Customers } from "./resources/customers.js";
 import { Kb } from "./resources/kb.js";
+import { People } from "./resources/people.js";
 import { Products } from "./resources/products.js";
 import { ReleaseNotes } from "./resources/releaseNotes.js";
 
@@ -45,8 +46,10 @@ export type BfocusClientOptions = Omit<BfocusOptions, "apiKey">;
 export class Bfocus {
   /** URL base em uso. */
   readonly baseUrl: string;
-  /** Clientes, contatos, produtos vinculados e interações. */
+  /** Clientes, contatos, produtos vinculados, interações, lotes e identificadores extras. */
   readonly customers: Customers;
+  /** Pessoas dos clientes (quem abre chamados pelo widget/portal) e seus identificadores extras. */
+  readonly people: People;
   /** Catálogo de produtos. */
   readonly products: Products;
   /** Release notes por produto. */
@@ -91,6 +94,7 @@ export class Bfocus {
     });
 
     this.customers = new Customers(transport);
+    this.people = new People(transport);
     this.products = new Products(transport);
     this.releaseNotes = new ReleaseNotes(transport);
     this.kb = new Kb(transport);

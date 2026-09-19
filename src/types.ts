@@ -182,6 +182,123 @@ export interface InteractionCreateParams {
   authorEmail?: string | null;
 }
 
+/** Um item de `customers.batch`: os mesmos campos de `customers.upsert` + o `externalId`. */
+export interface CustomerBatchItem extends CustomerUpsertParams {
+  /** `external_id` do cliente no seu sistema (obrigatório no item). */
+  externalId: string;
+}
+
+// ── Identificadores extras ───────────────────────────────────────────────────
+
+/** Identificador extra (id de outro sistema seu) ligado a um cliente ou a uma pessoa. */
+export interface Identifier {
+  external_id: string;
+  label: string | null;
+  /** Quem ligou: `api`, `panel`, `import`… */
+  source: string;
+}
+
+/** Cliente com a lista de identificadores extras (resposta de `customers.identifiers.*`). */
+export interface CustomerWithIdentifiers extends Customer {
+  /** Identificadores extras (o principal é `external_id`). */
+  identifiers: Identifier[];
+}
+
+/** Identificadores extras de uma pessoa (resposta de `people.identifiers.*`). */
+export interface PersonIdentifiers {
+  /** Identificador principal da pessoa. */
+  external_id: string | null;
+  identifiers: Identifier[];
+}
+
+/** Parâmetros opcionais de `customers.identifiers.add` / `people.identifiers.add`. */
+export interface IdentifierAddParams {
+  /** Rótulo livre (ex.: nome do sistema). Omitido = a requisição vai sem corpo. */
+  label?: string | null;
+}
+
+// ── Pessoas ──────────────────────────────────────────────────────────────────
+
+/** Pessoa de um cliente (quem abre chamados pelo widget/portal). */
+export interface Person {
+  /** `null` = contato do cliente sem acesso (sem identificador). */
+  external_id: string | null;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+  /** Pode abrir o widget/portal do cliente. */
+  access: boolean;
+  is_primary: boolean;
+  /** `external_id` principal do cliente a que a pessoa pertence. */
+  customer_external_id: string;
+}
+
+/** Status de um upsert/item de lote que deu certo. */
+export type UpsertStatus = "created" | "updated" | "unchanged";
+
+/** Resultado de `people.upsert`: a pessoa + o que aconteceu. */
+export interface PersonUpsertResult extends Person {
+  status: UpsertStatus;
+}
+
+/** Parâmetros de `people.upsert`. Só os campos informados mudam; `null` vai como `null`. */
+export interface PersonUpsertParams {
+  /** Obrigatório ao criar. */
+  name?: string | null;
+  /** Identifica a pessoa já cadastrada (sem duplicar). */
+  email?: string | null;
+  phone?: string | null;
+  role?: string | null;
+  /** Acesso ao widget/portal. Padrão ao criar: `true`. */
+  access?: boolean | null;
+  isPrimary?: boolean | null;
+  /** E-mails adicionais da mesma pessoa. */
+  extraEmails?: string[] | null;
+  /** Telefones adicionais da mesma pessoa. */
+  extraPhones?: string[] | null;
+}
+
+/** Um item de `people.batch`: cliente + `externalId` da pessoa + os campos de `people.upsert`. */
+export interface PersonBatchItem extends PersonUpsertParams {
+  /** `external_id` do cliente a que a pessoa pertence. */
+  customerExternalId: string;
+  /** `external_id` da pessoa no seu sistema (sem `:`, é o id assinado no widget). */
+  externalId: string;
+}
+
+// ── Lotes ────────────────────────────────────────────────────────────────────
+
+/** Resultado de um item de `customers.batch` / `people.batch`. */
+export interface BatchItemResult {
+  /** Posição do item no lote ENVIADO (0 = primeiro). */
+  index: number;
+  status: UpsertStatus | "error";
+  /** Identificador do item (o principal, depois do upsert). */
+  external_id: string | null;
+  /** Quando o cadastro foi unificado a outro: o `external_id` que passou a valer. Atualize do seu lado. */
+  merged_into: string | null;
+  /** Código estável do erro (`status = "error"`). */
+  error: string | null;
+  /** Status HTTP que o item teria sozinho (só em erro). */
+  code: number | null;
+}
+
+/** Contadores de um lote. */
+export interface BatchSummary {
+  created: number;
+  updated: number;
+  unchanged: number;
+  error: number;
+}
+
+/** Resultado de `customers.batch` / `people.batch`. Um erro não desfaz os outros itens. */
+export interface BatchResult {
+  /** Um resultado por item, na ordem enviada. */
+  results: BatchItemResult[];
+  summary: BatchSummary;
+}
+
 // ── Produtos ─────────────────────────────────────────────────────────────────
 
 /** Produto do catálogo. */

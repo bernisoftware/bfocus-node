@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { after, before, beforeEach, describe, it } from "node:test";
 import {
+  BATCH_MAX,
   Bfocus,
   BfocusError,
   DEFAULT_BASE_URL,
@@ -11,8 +12,9 @@ import {
   ServerError,
   VERSION,
   signWidgetIdentity,
+  signWidgetIdentityV2,
 } from "@bfocus/sdk";
-import type { FetchLike, KbArticleBatchItem } from "@bfocus/sdk";
+import type { CustomerBatchItem, FetchLike, KbArticleBatchItem, PersonBatchItem } from "@bfocus/sdk";
 import { closedPort, startServer } from "./helpers/server.js";
 import type { Recorded, Reply, TestServer } from "./helpers/server.js";
 
@@ -277,6 +279,107 @@ describe("kb.articles.batchUpsert", () => {
   });
 });
 
+describe("customers.batch / people.batch", () => {
+  const customers = (n: number): CustomerBatchItem[] =>
+    Array.from({ length: n }, (_, i) => ({ externalId: `erp-${i}`, name: `Cliente ${i}` }));
+  const people = (n: number): PersonBatchItem[] =>
+    Array.from({ length: n }, (_, i) => ({ customerExternalId: "erp-1", externalId: `app-${i}`, name: `P ${i}` }));
+  const echo = (r: Recorded) => {
+    const items = (r.body as { items: unknown[] }).items;
+    return ok({
+      results: items.map((_, index) => ({
+        index,
+        status: "created",
+        external_id: `x${index}`,
+        merged_into: null,
+        error: null,
+        code: null,
+      })),
+      summary: { created: items.length, updated: 0, unchanged: 0, error: 0 },
+    });
+  };
+
+  it("BATCH_MAX é 500", () => {
+    assert.equal(BATCH_MAX, 500);
+  });
+
+  it("501 itens: TypeError em português, sem nenhuma requisição", async () => {
+    server.setHandler(echo);
+    await assert.rejects(
+      bf.customers.batch(customers(501)),
+      (e: unknown) =>
+        e instanceof TypeError &&
+        !(e instanceof BfocusError) &&
+        e.message.includes("customers.batch aceita até 500 itens por chamada (recebeu 501); divida em lotes de 500."),
+    );
+    await assert.rejects(
+      bf.people.batch(people(501)),
+      (e: unknown) => e instanceof TypeError && e.message.includes("people.batch aceita até 500 itens"),
+    );
+    assert.equal(server.requests.length, 0);
+  });
+
+  it("500 itens: UMA requisição com os 500 (a SDK não divide)", async () => {
+    server.setHandler(echo);
+    const c = await bf.customers.batch(customers(500), { idempotencyKey: "carga-1" });
+    const p = await bf.people.batch(people(500));
+    assert.equal(server.requests.length, 2);
+    assert.equal(server.requests[0]!.path, `${P}/customers/batch`);
+    assert.equal((server.requests[0]!.body as { items: unknown[] }).items.length, 500);
+    assert.equal(server.requests[0]!.headers["idempotency-key"], "carga-1");
+    assert.equal(server.requests[1]!.path, `${P}/people/batch`);
+    assert.equal((server.requests[1]!.body as { items: unknown[] }).items.length, 500);
+    assert.equal(c.summary.created, 500);
+    assert.equal(p.results[499]!.index, 499);
+  });
+
+  it("serializa como o upsert (só o que veio; null vai) e people vira {customer_external_id, person}", async () => {
+    server.setHandler(echo);
+    await bf.customers.batch([{ externalId: "erp-1", name: "A", document: null, email: undefined }]);
+    assert.deepEqual(server.requests[0]!.body, { items: [{ external_id: "erp-1", name: "A", document: null }] });
+    await bf.people.batch([
+      { customerExternalId: "erp-1", externalId: "app-1", isPrimary: true, extraPhones: null, phone: undefined },
+    ]);
+    assert.deepEqual(server.requests[1]!.body, {
+      items: [{ customer_external_id: "erp-1", person: { external_id: "app-1", is_primary: true, extra_phones: null } }],
+    });
+  });
+
+  it("lista vazia não chama a API; item sem id falha antes de qualquer envio", async () => {
+    const empty = { results: [], summary: { created: 0, updated: 0, unchanged: 0, error: 0 } };
+    assert.deepEqual(await bf.customers.batch([]), empty);
+    assert.deepEqual(await bf.people.batch([]), empty);
+    await assert.rejects(
+      bf.customers.batch([...customers(3), { name: "sem id" } as unknown as CustomerBatchItem]),
+      /items\[3\]\.externalId/,
+    );
+    await assert.rejects(
+      bf.people.batch([{ externalId: "app-1" } as unknown as PersonBatchItem]),
+      /items\[0\]\.customerExternalId/,
+    );
+    assert.equal(server.requests.length, 0);
+  });
+});
+
+describe("people e identificadores", () => {
+  it("upsert manda {person: {...}} só com o que veio; codifica os segmentos", async () => {
+    server.setHandler(() => ok({ status: "unchanged" }));
+    await bf.people.upsert("ERP 1042", "app 7");
+    assert.equal(server.requests[0]!.path, `${P}/customers/ERP%201042/people/app%207`);
+    assert.deepEqual(server.requests[0]!.body, { person: {} });
+  });
+
+  it("identifiers.add: corpo só com label (inclusive null); sem label, sem corpo", async () => {
+    server.setHandler(() => ok({ external_id: "x", identifiers: [] }));
+    await bf.customers.identifiers.add("ERP 1042", "crm-88", { label: null });
+    await bf.people.identifiers.add("app-1", "crm-p5");
+    assert.equal(server.requests[0]!.path, `${P}/customers/ERP%201042/identifiers/crm-88`);
+    assert.deepEqual(server.requests[0]!.body, { label: null });
+    assert.equal(server.requests[1]!.body, null);
+    assert.equal(server.requests[1]!.headers["content-type"], undefined);
+  });
+});
+
 describe("listAll", () => {
   const items = Array.from({ length: 5 }, (_, i) => ({ id: `id-${i}` }));
   const paged = (req: Recorded) => {
@@ -443,5 +546,39 @@ describe("signWidgetIdentity", () => {
       "9a15d2527b855a048094ea7826c3b0f16ae5db3035ac3537324d45007ef15141",
     );
     assert.throws(() => signWidgetIdentity("", "u", "c"), TypeError);
+  });
+});
+
+describe("signWidgetIdentityV2", () => {
+  it("formato v2.<ts>.<hex> com o instante fixo (número = segundos unix)", () => {
+    assert.equal(
+      signWidgetIdentityV2("bf_whs_x", "USR-1", "ACME-1", { now: 1789000000 }),
+      "v2.1789000000.bfbf2a0390fbb9d65f268899acce2b4d7a2606ba13bb25b453ff3a7971fbd7be",
+    );
+    assert.match(signWidgetIdentityV2("s", "u", "c", { now: 1789000000.9 }), /^v2\.1789000000\.[0-9a-f]{64}$/);
+  });
+
+  it("sem instante, ts fica a ±5 s de agora", () => {
+    const [prefix, ts, hex] = signWidgetIdentityV2("bf_whs_x", "app-77", "erp-1042").split(".");
+    assert.equal(prefix, "v2");
+    assert.match(hex!, /^[0-9a-f]{64}$/);
+    assert.ok(Math.abs(Number(ts) - Date.now() / 1000) <= 5, `ts fora da janela: ${ts}`);
+  });
+
+  it("recusa ':' no usuário (o cliente pode ter), vazios e instante negativo", () => {
+    assert.throws(() => signWidgetIdentityV2("s", "erp:77", "c"), (e: unknown) => e instanceof TypeError && /:/.test(e.message));
+    assert.doesNotThrow(() => signWidgetIdentityV2("s", "app-77", "erp:1042"));
+    assert.throws(() => signWidgetIdentityV2("", "u", "c"), TypeError);
+    assert.throws(() => signWidgetIdentityV2("s", "", "c"), TypeError);
+    assert.throws(() => signWidgetIdentityV2("s", "u", ""), TypeError);
+    assert.throws(() => signWidgetIdentityV2("s", "u", "c", { now: -1 }), TypeError);
+    assert.throws(() => signWidgetIdentityV2("s", "u", "c", { now: new Date(Number.NaN) }), TypeError);
+  });
+
+  it("não mudou a v1", () => {
+    assert.equal(
+      signWidgetIdentity("bf_whs_x", "USR-1", "ACME-1"),
+      "9a15d2527b855a048094ea7826c3b0f16ae5db3035ac3537324d45007ef15141",
+    );
   });
 });

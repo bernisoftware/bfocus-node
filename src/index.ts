@@ -9,7 +9,7 @@
  */
 export { Bfocus } from "./client.js";
 export type { BfocusOptions, BfocusClientOptions } from "./client.js";
-export { DEFAULT_BASE_URL } from "./core.js";
+export { BATCH_MAX, DEFAULT_BASE_URL } from "./core.js";
 export type { FetchLike, FetchResponseLike, RequestOptions, SleepFn } from "./core.js";
 export {
   BfocusError,
@@ -23,9 +23,17 @@ export {
   NetworkError,
 } from "./errors.js";
 export type { BfocusErrorInit } from "./errors.js";
-export { signWidgetIdentity } from "./signature.js";
+export { signWidgetIdentity, signWidgetIdentityV2 } from "./signature.js";
+export type { SignWidgetIdentityV2Options } from "./signature.js";
 export { VERSION } from "./version.js";
-export type { Customers, CustomerContacts, CustomerProducts, CustomerInteractions } from "./resources/customers.js";
+export type {
+  Customers,
+  CustomerContacts,
+  CustomerProducts,
+  CustomerInteractions,
+  CustomerIdentifiers,
+} from "./resources/customers.js";
+export type { People, PeopleIdentifiers } from "./resources/people.js";
 export type { Products } from "./resources/products.js";
 export type { ReleaseNotes } from "./resources/releaseNotes.js";
 export type { Kb, KbArticles } from "./resources/kb.js";
@@ -35,16 +43,23 @@ export type {
   AiAgentPreview,
   AiAgentPreviewParams,
   AiAgentPreviewTurn,
+  BatchItemResult,
+  BatchResult,
+  BatchSummary,
   Contact,
   ContactUpsertParams,
   Customer,
+  CustomerBatchItem,
   CustomerListAllParams,
   CustomerListParams,
   CustomerUpsertParams,
+  CustomerWithIdentifiers,
   CustomField,
   CustomFieldInput,
   CustomFieldType,
   Deleted,
+  Identifier,
+  IdentifierAddParams,
   Interaction,
   InteractionCreateParams,
   InteractionListAllParams,
@@ -61,6 +76,11 @@ export type {
   KbSearchHit,
   KbSearchParams,
   Page,
+  Person,
+  PersonBatchItem,
+  PersonIdentifiers,
+  PersonUpsertParams,
+  PersonUpsertResult,
   Product,
   ProductListParams,
   ProductRef,
@@ -70,4 +90,5 @@ export type {
   ReleaseNoteListAllParams,
   ReleaseNoteListParams,
   ReleaseNoteUpsertParams,
+  UpsertStatus,
 } from "./types.js";
