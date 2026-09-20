@@ -77,10 +77,28 @@ export interface CustomField {
 }
 
 /** Cliente (empresa atendida). */
+/**
+ * Tipo do CONTRATANTE: `pj` (empresa) ou `pf` (pessoa física). Cliente é a CONTA, não a pessoa:
+ * uma conta PF pode ter várias pessoas dentro (o titular e quem ele autorizar).
+ */
+export type CustomerKind = "pj" | "pf";
+
 export interface Customer {
   id: string;
   external_id: string;
+  /** O nome usado em tudo. Na PJ é o nome fantasia; a razão social fica em `legal_name`. */
   name: string;
+  /** `null` = ninguém declarou e o documento não diz. */
+  kind: CustomerKind | null;
+  /** Só PJ: razão social, quando difere do nome fantasia. */
+  legal_name: string | null;
+  /** Só PJ: inscrição estadual (aceita `ISENTO`). */
+  state_registration: string | null;
+  /** Só PJ: inscrição municipal. */
+  municipal_registration: string | null;
+  /** Só PF: RG e órgão emissor (texto livre — o formato varia por estado). */
+  id_document: string | null;
+  /** CNPJ (PJ) ou CPF (PF), sem máscara. */
   document: string | null;
   email: string | null;
   phone: string | null;
@@ -136,6 +154,16 @@ export interface Interaction {
 export interface CustomerUpsertParams {
   name?: string | null;
   document?: string | null;
+  /** Tipo do contratante: `pj` (empresa) ou `pf` (pessoa física). Omitido, sai do documento. */
+  kind?: CustomerKind | null;
+  /** Só PJ: razão social, quando difere do nome fantasia que vai em `name`. */
+  legalName?: string | null;
+  /** Só PJ: inscrição estadual (aceita `ISENTO`). */
+  stateRegistration?: string | null;
+  /** Só PJ: inscrição municipal. */
+  municipalRegistration?: string | null;
+  /** Só PF: RG e órgão emissor. */
+  idDocument?: string | null;
   email?: string | null;
   phone?: string | null;
   website?: string | null;

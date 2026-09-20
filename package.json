@@ -1,6 +1,6 @@
 {
   "name": "@bfocus/sdk",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "SDK oficial do bFocus para Node.js/TypeScript — clientes, produtos, release notes, base de conhecimento e agentes de IA.",
   "license": "MIT",
   "author": "Berni Software",

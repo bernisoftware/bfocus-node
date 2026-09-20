@@ -23,6 +23,11 @@ import type {
 const CUSTOMER_FIELDS = {
   name: "name",
   document: "document",
+  kind: "kind",
+  legalName: "legal_name",
+  stateRegistration: "state_registration",
+  municipalRegistration: "municipal_registration",
+  idDocument: "id_document",
   email: "email",
   phone: "phone",
   website: "website",
