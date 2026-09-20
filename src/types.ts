@@ -88,6 +88,12 @@ export interface Customer {
   notes: string | null;
   custom_fields: CustomField[];
   is_active: boolean;
+  /** Logotipo do cliente, como a equipe subiu no bFocus. `null` = sem logotipo. */
+  logo_url: string | null;
+  /** E-mails adicionais do cliente (o principal é `email`). */
+  extra_emails: string[];
+  /** Telefones adicionais do cliente (o principal é `phone`). */
+  extra_phones: string[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -239,6 +245,12 @@ export interface Person {
   customer_external_id: string;
   /** Campos personalizados da pessoa (a `visibility` é definida no bFocus). */
   custom_fields: CustomField[];
+  /**
+   * Identificadores EXTRAS desta pessoa: os outros ids pelos quais ela também é encontrada
+   * (o principal é `external_id`). É por aqui que você descobre que o id do SEU sistema virou
+   * apelido do cadastro de outro.
+   */
+  identifiers: Identifier[];
 }
 
 /** Status de um upsert/item de lote que deu certo. */
@@ -247,6 +259,22 @@ export type UpsertStatus = "created" | "updated" | "unchanged";
 /** Resultado de `people.upsert`: a pessoa + o que aconteceu. */
 export interface PersonUpsertResult extends Person {
   status: UpsertStatus;
+  /**
+   * `true` = a pessoa JÁ EXISTIA em outro cliente e esta chamada a ligou também a este.
+   * O cadastro é único e ela circula pelos dois — nada foi transferido nem duplicado.
+   */
+  linked: boolean;
+  /** O id que você enviou é um APELIDO: este é o `external_id` principal do cadastro. */
+  merged_into: string | null;
+}
+
+/** Resultado de `people.delete`: a pessoa + se ela apenas saiu DESTE cliente. */
+export interface PersonRevokeResult extends Person {
+  /**
+   * `true` = ela continua com acesso, porque também é de outros clientes (o acesso é do
+   * vínculo). `false` = era só deste cliente e foi desligada, como sempre.
+   */
+  unlinked: boolean;
 }
 
 /** Parâmetros de `people.upsert`. Só os campos informados mudam; `null` vai como `null`. */
@@ -301,6 +329,8 @@ export interface BatchItemResult {
   external_id: string | null;
   /** Quando o cadastro foi unificado a outro: o `external_id` que passou a valer. Atualize do seu lado. */
   merged_into: string | null;
+  /** A pessoa já existia em outro cliente e este item a ligou também a este (cadastro único). */
+  linked: boolean;
   /** Código estável do erro (`status = "error"`). */
   error: string | null;
   /** Status HTTP que o item teria sozinho (só em erro). */

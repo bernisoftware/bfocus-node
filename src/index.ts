@@ -80,6 +80,7 @@ export type {
   PersonBatchItem,
   PersonIdentifiers,
   PersonUpsertParams,
+  PersonRevokeResult,
   PersonUpsertResult,
   Product,
   ProductListParams,

@@ -146,7 +146,10 @@ await bf.people.upsert("erp-1042", "app-77", { access: true }); // devolve o ace
 
 - **Nunca duplica**: se o e-mail (ou o telefone) já é de uma pessoa que chegou antes — por e-mail,
   pelo widget ou por outro sistema — o upsert **adota** essa pessoa e passa a reconhecê-la pelo seu id.
-- A mesma pessoa informada com **outro cliente** é transferida para ele.
+- A mesma pessoa informada com **outro cliente** NÃO é transferida: fica **ligada** também a ele
+  (`linked: true` na resposta). O cadastro é único e a mesma pessoa circula por vários clientes.
+- **O acesso é do vínculo.** `delete` (e `access: false`) tira o acesso dela NESTE cliente, não nos
+  outros: `unlinked: true` na resposta quer dizer que ela segue ativa em algum outro.
 - `delete` não apaga: retira o acesso e a pessoa continua no histórico dos chamados.
 - Erros comuns (`err.code`): `CUSTOMER_NOT_FOUND`, `NAME_REQUIRED` (ao criar), `PERSON_EMAIL_TAKEN`,
   `PERSON_PHONE_TAKEN`, `PERSON_CONTACT_OTHER_CUSTOMER`, `PERSON_EMAIL_STAFF` (e-mail de alguém da

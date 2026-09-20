@@ -6,6 +6,7 @@ import type {
   Person,
   PersonBatchItem,
   PersonIdentifiers,
+  PersonRevokeResult,
   PersonUpsertParams,
   PersonUpsertResult,
 } from "../types.js";
@@ -96,7 +97,8 @@ export class People {
    * Cria ou atualiza uma pessoa do cliente pelo `external_id` dela no seu sistema (o mesmo
    * `user.externalId` assinado no widget — sem `:`). Só os campos informados mudam; `null`
    * explícito vai como `null`. Pelo e-mail (ou telefone) a API acha a pessoa que já chegou por
-   * outro canal e a adota, sem duplicar; a mesma pessoa informada com outro cliente é transferida.
+   * outro canal e a adota, sem duplicar; a mesma pessoa informada com outro cliente é LIGADA a
+   * ele também (cadastro único em N clientes) e `linked` volta `true`.
    * `status` diz o que aconteceu (`created`, `updated`, `unchanged`).
    *
    * `customFields`, quando enviada, SUBSTITUI a lista inteira de campos personalizados da
@@ -134,7 +136,7 @@ export class People {
    * um `upsert` com `access: true` devolve o acesso.
    * `DELETE /customers/{customer_external_id}/people/{person_external_id}`
    */
-  delete(customerExternalId: string, personExternalId: string, options?: RequestOptions): Promise<Person> {
+  delete(customerExternalId: string, personExternalId: string, options?: RequestOptions): Promise<PersonRevokeResult> {
     return this.#t.data(
       {
         method: "DELETE",
