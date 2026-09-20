@@ -260,12 +260,17 @@ function buildError(
   if (isObject(body?.validation)) {
     for (const [k, v] of Object.entries(body.validation)) validation[k] = String(v);
   }
+  // `data` é o detalhe estruturado do erro (de quem é o contato já usado, o dono de um
+  // identificador…). A API também o repete em `validation`, mas quem lê o erro precisa
+  // alcançá-lo sem depender dessa duplicação.
+  const data: Record<string, unknown> = isObject(body?.data) ? { ...body.data } : {};
   return errorForStatus({
     code,
     status,
     requestId:
       nonEmptyString(body?.request_id) ?? nonEmptyString(headers.get("x-request-id")) ?? sentRequestId,
     validation,
+    data,
     retryAfter: status === 429 ? parseRetryAfter(headers.get("retry-after")) : undefined,
     requiredScope: status === 403 ? (nonEmptyString(headers.get("x-required-scope")) ?? undefined) : undefined,
   });

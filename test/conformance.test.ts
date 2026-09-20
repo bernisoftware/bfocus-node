@@ -150,6 +150,7 @@ const OPS: Record<string, (bf: Bfocus, a: Args) => Promise<unknown>> = {
   "people.list": (bf, a) => bf.people.list(a.customer_external_id),
   "people.delete": (bf, a) => bf.people.delete(a.customer_external_id, a.person_external_id),
   "people.batch": (bf, a) => bf.people.batch(a.items.map((x: Args) => params(x))),
+  "people.identifiers.list": (bf, a) => bf.people.identifiers.list(a.person_external_id),
   "people.identifiers.add": (bf, a) =>
     bf.people.identifiers.add(a.person_external_id, a.extra_id, params(a, "person_external_id", "extra_id")),
   "people.identifiers.remove": (bf, a) => bf.people.identifiers.remove(a.person_external_id, a.extra_id),

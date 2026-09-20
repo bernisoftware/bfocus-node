@@ -527,6 +527,27 @@ describe("mapeamento de erros", () => {
     assert.equal(JSON.parse(JSON.stringify(err)).requiredScope, "kb:write");
   });
 
+  it("o `data` do erro chega a quem trata: o dono do contato tomado", async () => {
+    const dono = {
+      field: "email",
+      owner_external_id: "app-12",
+      owner_name: "Paula Reis",
+      owner_customer_external_id: "erp-1042",
+    };
+    server.setHandler(() => ({
+      status: 409,
+      body: { code: 409, data: dono, error: "PERSON_EMAIL_TAKEN", validation: dono, request_id: "r1" },
+    }));
+    const err = await failure(bf.people.upsert("erp-1042", "app-77", { email: "paula@padaria.example" }));
+    assert.equal(err.name, "ConflictError");
+    assert.equal(err.code, "PERSON_EMAIL_TAKEN");
+    assert.deepEqual(err.data, dono);
+    assert.equal(JSON.parse(JSON.stringify(err)).data.owner_customer_external_id, "erp-1042");
+
+    server.setHandler(() => ({ status: 404, body: { code: 404, data: null, error: "CUSTOMER_NOT_FOUND" } }));
+    assert.deepEqual((await failure(bf.customers.get("erp-1042"))).data, {});
+  });
+
   it("2xx fora do envelope JSON vira INVALID_RESPONSE", async () => {
     server.setHandler(() => ({ status: 200, body: "<html>proxy</html>" }));
     await assert.rejects(bf.customers.get("C1"), (e: unknown) => e instanceof BfocusError && e.code === "INVALID_RESPONSE");

@@ -46,7 +46,12 @@ export type CustomFieldType =
   | "select"
   | "file";
 
-/** Campo customizado enviado no upsert de cliente. */
+/**
+ * Campo customizado enviado no upsert de cliente **ou de pessoa**.
+ *
+ * `visibility` não entra aqui: quem vê o campo é decisão do bFocus e é preservada entre
+ * sincronizações — o seu sistema não rebaixa nem promove a exposição de um dado sem querer.
+ */
 export interface CustomFieldInput {
   /** Chave estável do campo no seu sistema. */
   key: string;
@@ -60,7 +65,7 @@ export interface CustomFieldInput {
   options?: string[] | null;
 }
 
-/** Campo customizado de um cliente, como a API devolve. */
+/** Campo customizado de um cliente ou de uma pessoa, como a API devolve. */
 export interface CustomField {
   key: string;
   label: string | null;
@@ -232,6 +237,8 @@ export interface Person {
   is_primary: boolean;
   /** `external_id` principal do cliente a que a pessoa pertence. */
   customer_external_id: string;
+  /** Campos personalizados da pessoa (a `visibility` é definida no bFocus). */
+  custom_fields: CustomField[];
 }
 
 /** Status de um upsert/item de lote que deu certo. */
@@ -257,6 +264,22 @@ export interface PersonUpsertParams {
   extraEmails?: string[] | null;
   /** Telefones adicionais da mesma pessoa. */
   extraPhones?: string[] | null;
+  /**
+   * Campos personalizados da pessoa. Diferente de `extraEmails`/`extraPhones`, a lista
+   * SUBSTITUI a lista inteira: mande o que o seu sistema tem hoje, porque campo que ficar de
+   * fora é REMOVIDO. Omitir a propriedade não mexe em nada.
+   */
+  customFields?: CustomFieldInput[] | null;
+  /**
+   * Campos a **APAGAR** nesta pessoa: `["email"]`, `["phone"]` ou os dois.
+   *
+   * Apagar é EXPLÍCITO. `phone: null`, `clear: []` e omitir a propriedade continuam
+   * significando "não mexe" — a SDK não traduz `null` em `clear`. Campo fora da lista aceita
+   * é RECUSADO (422 `PERSON_CLEAR_FIELD_INVALID`), não ignorado. E só se limpa a PRÓPRIA
+   * ficha: alcançando a pessoa por um identificador EXTRA, a API recusa com 409
+   * `PERSON_CLEAR_NOT_OWN_RECORD`.
+   */
+  clear?: string[] | null;
 }
 
 /** Um item de `people.batch`: cliente + `externalId` da pessoa + os campos de `people.upsert`. */

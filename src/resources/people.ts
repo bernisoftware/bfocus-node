@@ -19,6 +19,8 @@ const PERSON_FIELDS = {
   isPrimary: "is_primary",
   extraEmails: "extra_emails",
   extraPhones: "extra_phones",
+  customFields: "custom_fields",
+  clear: "clear",
 };
 
 const customerPeoplePath = (customerExternalId: string) =>
@@ -31,6 +33,19 @@ export class PeopleIdentifiers {
 
   constructor(transport: Transport) {
     this.#t = transport;
+  }
+
+  /**
+   * Todos os identificadores da pessoa: o principal (`external_id` do retorno) e os extras.
+   * Aceita no caminho o principal OU qualquer um dos extras. Escopo `customers:read`.
+   *
+   * É a fonte de verdade para **reconciliar**: `people.list` mostra só o identificador
+   * principal, então um id que virou extra some de lá sem ter sumido do cadastro — e, sem
+   * esta leitura, era preciso ESCREVER (tentar um `add`) para descobrir o que aconteceu.
+   * `GET /people/{person_external_id}/identifiers`
+   */
+  list(personExternalId: string, options?: RequestOptions): Promise<PersonIdentifiers> {
+    return this.#t.data({ method: "GET", path: `${personPath(personExternalId)}/identifiers` }, options);
   }
 
   /**
@@ -83,6 +98,14 @@ export class People {
    * explícito vai como `null`. Pelo e-mail (ou telefone) a API acha a pessoa que já chegou por
    * outro canal e a adota, sem duplicar; a mesma pessoa informada com outro cliente é transferida.
    * `status` diz o que aconteceu (`created`, `updated`, `unchanged`).
+   *
+   * `customFields`, quando enviada, SUBSTITUI a lista inteira de campos personalizados da
+   * pessoa — campo que ficar de fora é removido. Omitir a propriedade não mexe em nada.
+   *
+   * `clear` APAGA contato (`["email"]`, `["phone"]` ou os dois). É explícito de propósito:
+   * `null`, `[]` e omitir continuam sendo "não mexe". Campo fora da lista aceita é recusado
+   * (422 `PERSON_CLEAR_FIELD_INVALID`), e por um identificador EXTRA a API recusa (409
+   * `PERSON_CLEAR_NOT_OWN_RECORD`): só se limpa a própria ficha.
    * `PUT /customers/{customer_external_id}/people/{person_external_id}`
    */
   upsert(

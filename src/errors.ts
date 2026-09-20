@@ -18,6 +18,8 @@ export interface BfocusErrorInit {
   requestId?: string;
   /** Campo → motivo (erros 422). */
   validation?: Record<string, string>;
+  /** `body.data` — o detalhe estruturado de alguns erros. */
+  data?: Record<string, unknown>;
   /** Segundos do header `Retry-After` (só 429). */
   retryAfter?: number;
   /** Escopo que faltou na chave (header `X-Required-Scope`, só 403). */
@@ -47,6 +49,15 @@ export class BfocusError extends Error {
   readonly requestId: string | undefined;
   /** Campo → motivo, em erros de validação (422). Vazio nos demais. */
   readonly validation: Record<string, string>;
+  /**
+   * O `data` do corpo do erro: o detalhe estruturado que alguns erros trazem. Vazio nos demais.
+   *
+   * É onde vem, por exemplo, de quem é o contato já usado num 409 `PERSON_EMAIL_TAKEN` /
+   * `PERSON_PHONE_TAKEN` (`field`, `owner_external_id`, `owner_name`,
+   * `owner_customer_external_id`) e o `owner` de um `IDENTIFIER_IN_USE`. A API repete esse
+   * detalhe em {@link validation}, por compatibilidade com as SDKs que ainda não expunham `data`.
+   */
+  readonly data: Record<string, unknown>;
   /** Segundos pedidos pelo header `Retry-After` (só em 429). */
   readonly retryAfter: number | undefined;
   /** Escopo que faltou na chave de API (só em 403 de escopo). */
@@ -59,6 +70,7 @@ export class BfocusError extends Error {
     this.status = init.status;
     this.requestId = init.requestId;
     this.validation = init.validation ?? {};
+    this.data = init.data ?? {};
     this.retryAfter = init.retryAfter;
     this.requiredScope = init.requiredScope;
   }
@@ -72,6 +84,7 @@ export class BfocusError extends Error {
       message: this.message,
       requestId: this.requestId,
       validation: this.validation,
+      data: this.data,
       retryAfter: this.retryAfter,
       requiredScope: this.requiredScope,
     };

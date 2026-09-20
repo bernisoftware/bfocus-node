@@ -149,7 +149,104 @@ await bf.people.upsert("erp-1042", "app-77", { access: true }); // devolve o ace
 - A mesma pessoa informada com **outro cliente** é transferida para ele.
 - `delete` não apaga: retira o acesso e a pessoa continua no histórico dos chamados.
 - Erros comuns (`err.code`): `CUSTOMER_NOT_FOUND`, `NAME_REQUIRED` (ao criar), `PERSON_EMAIL_TAKEN`,
-  `PERSON_PHONE_TAKEN`, `PERSON_EMAIL_STAFF` (e-mail de alguém da sua equipe no bFocus).
+  `PERSON_PHONE_TAKEN`, `PERSON_CONTACT_OTHER_CUSTOMER`, `PERSON_EMAIL_STAFF` (e-mail de alguém da
+  sua equipe no bFocus), `PERSON_CLEAR_FIELD_INVALID` e `PERSON_CLEAR_NOT_OWN_RECORD` (ver
+  [Apagar o e-mail ou o telefone](#apagar-o-e-mail-ou-o-telefone-da-pessoa)).
+
+### Campos personalizados da pessoa
+
+`customFields` leva o que só existe no seu sistema (matrícula, centro de custo, filial). É a
+**exceção** ao "só o que vier muda": a lista enviada **substitui a lista inteira** — campo que
+ficar de fora é **removido**. Mande sempre a lista que o seu sistema tem hoje; omitir a propriedade não mexe
+em nada, como em qualquer outro campo.
+
+A `visibility` é decidida no bFocus e **preservada entre sincronizações** — por isso ela não vai
+no envio, só volta na resposta: o seu ERP não rebaixa nem promove a exposição de um dado sem
+querer.
+
+Vale no upsert de pessoa, no lote de pessoas e na listagem de pessoas do cliente.
+
+```ts
+const p = await bf.people.upsert("erp-1042", "app-77", {
+  customFields: [                        // a lista INTEIRA do seu sistema
+    { key: "matricula", label: "Matrícula", value: "4471" },
+    { key: "filial", label: "Filial", value: "Centro" },
+  ],
+});
+for (const campo of p.custom_fields) {
+  console.log(campo.key, campo.value, campo.visibility); // visibility vem do bFocus
+}
+```
+
+### Apagar o e-mail ou o telefone da pessoa
+
+Um contato gravado errado ficava preso para sempre: enquanto a ficha errada segurasse o
+telefone, nenhum reenvio o soltava. `clear` apaga.
+
+```ts
+await bf.people.upsert("erp-1042", "app-77", { clear: ["phone"] });            // some o telefone
+await bf.people.upsert("erp-1042", "app-77", { clear: ["email", "phone"] });   // some os dois
+```
+
+Três regras que parecem contraintuitivas e são de propósito:
+
+- **Apagar é explícito.** `phone: null`, `clear: []` e omitir a propriedade continuam
+  significando **"não mexe"** — a SDK não traduz `null` em `clear`. Fazer o `null` apagar
+  teria apagado, em silêncio e na primeira carga seguinte, o dado de todo sistema que manda
+  `null` para "não tenho esse valor".
+- **Campo fora da lista é recusado, não ignorado**: hoje só `"email"` e `"phone"`; qualquer
+  outro devolve 422 `PERSON_CLEAR_FIELD_INVALID` (`ValidationError`).
+- **Só se limpa a própria ficha.** Se você alcançou a pessoa por um identificador **extra**, a
+  API recusa com 409 `PERSON_CLEAR_NOT_OWN_RECORD` (`ConflictError`): apagar o contato de uma
+  ficha alcançada por apelido seria apagar dado de outro sistema. Para saber se o id que você
+  tem em mãos é o principal ou um extra, use `bf.people.identifiers.list(...)`.
+
+Vale no `people.upsert` e no `people.batch` (`clear: ["phone"]` no item).
+
+### Contato já usado: um 409 que você consegue resolver
+
+`PERSON_EMAIL_TAKEN` e `PERSON_PHONE_TAKEN` (409) não são "tente de novo": o e-mail (ou o
+telefone) já é de outra pessoa da conta. O erro diz **de quem**, em `err.data` (a API repete o mesmo
+detalhe em `err.validation`, por compatibilidade):
+
+| campo | o que é |
+| --- | --- |
+| `field` | `email` ou `phone` — qual contato está tomado |
+| `owner_external_id` | o identificador da pessoa que já usa esse contato |
+| `owner_name` | o nome dela |
+| `owner_customer_external_id` | o cliente a que ela pertence |
+
+**É o `owner_customer_external_id` que decide a ação**, e os dois casos pedem coisas opostas:
+
+- **mesmo cliente que você enviou** → é quase sempre a MESMA pessoa em dois sistemas. Uma pessoa
+  tem **N identificadores**: registre o seu como **extra** dela. A partir daí o seu id encontra
+  essa pessoa.
+- **outro cliente** → ninguém decide sozinho a quem a pessoa pertence. Não force: registre o caso
+  e leve para quem conhece o cadastro. Unificar dois clientes é decisão de gente, não de um
+  casamento por e-mail.
+
+```ts
+import { ConflictError } from "@bfocus/sdk";
+
+try {
+  await bf.people.upsert("erp-1042", "app-77", { name: "Paula Reis", email: "paula@padaria.example" });
+} catch (err) {
+  if (!(err instanceof ConflictError) || !["PERSON_EMAIL_TAKEN", "PERSON_PHONE_TAKEN"].includes(err.code)) throw err;
+  const dono = err.data as Record<string, string>;
+  if (dono["owner_customer_external_id"] === "erp-1042") {
+    // A mesma pessoa, com dois ids: o seu vira mais um identificador dela.
+    await bf.people.identifiers.add(dono["owner_external_id"]!, "app-77", { label: "ERP" });
+  } else {
+    // Dono em OUTRO cliente: não decida sozinho — registre e leve para o cadastro.
+    await avisarCadastro(err.code, dono);
+  }
+}
+```
+
+`PERSON_CONTACT_OTHER_CUSTOMER` (409) é o mesmo assunto pelo outro lado, e é **recusa
+definitiva**: a API não move mais uma pessoa de um cliente para outro só porque o e-mail (ou o
+telefone) casou. Repetir a chamada não resolve — trate como caso para o cadastro, nunca como
+falha temporária.
 
 ## Lotes
 
@@ -207,6 +304,22 @@ await bf.people.identifiers.remove("app-77", "crm-p5");
 Se o id já pertence a **outro** cadastro, a API responde 409 → `ConflictError` com
 `code = "IDENTIFIER_IN_USE"`. Remover um id que não está ligado → `NotFoundError`
 (`IDENTIFIER_NOT_FOUND`).
+
+### Ler os identificadores da pessoa (para reconciliar)
+
+`bf.people.list(...)` mostra só o identificador **principal** de cada pessoa. Quando dois
+cadastros seus eram a mesma pessoa, um dos ids virou **extra** — e some da listagem sem ter
+sumido do cadastro. É isso que faz a sua conferência fechar "633 de 636" sem explicar os 3.
+
+`people.identifiers.list` é a fonte de verdade dessa conferência, e é **leitura**: antes dela
+era preciso ESCREVER (tentar um `add`) para descobrir o que tinha acontecido. Aceita no
+caminho o id principal **ou qualquer um dos extras**.
+
+```ts
+const ids = await bf.people.identifiers.list("crm-p5"); // o id extra que "sumiu" da listagem
+ids.external_id;  // "app-77" — o principal do cadastro
+for (const i of ids.identifiers) console.log(i.external_id, i.label, i.source);
+```
 
 ## Sincronizar clientes e usuários do seu sistema
 
@@ -393,6 +506,7 @@ try {
 | `status` | status HTTP (`0` em erro de rede) |
 | `requestId` | id da requisição — informe ao suporte (do corpo, senão do header, senão o `X-Request-Id` que a SDK enviou; a API ecoa o mesmo id, então ele bate com o log — vale também para `NetworkError`) |
 | `validation` | campo → motivo (422) |
+| `data` | o `data` do corpo: o detalhe estruturado que alguns erros trazem (`{}` quando não há) — ex.: de quem é o contato num 409 `PERSON_EMAIL_TAKEN` |
 | `retryAfter` | segundos pedidos pelo `Retry-After` (429) |
 | `requiredScope` | escopo que faltou na chave (403) |
 
