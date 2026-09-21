@@ -3,7 +3,7 @@
 //
 // Não é cosmética: vai no header X-Bfocus-Client de toda requisição, e é por ele que a
 // API sabe quem avisar quando uma correção exige atualizar a SDK.
-export const VERSION = '0.2.3';
+export const VERSION = '0.2.4';
 
 /** Identificação enviada em `X-Bfocus-Client` (e `User-Agent`). */
 export const CLIENT_ID = `bfocus-node/${VERSION}`;
