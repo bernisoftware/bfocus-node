@@ -15,6 +15,7 @@ const PERSON_FIELDS = {
   name: "name",
   email: "email",
   phone: "phone",
+  document: "document",
   role: "role",
   access: "access",
   isPrimary: "is_primary",
@@ -108,6 +109,11 @@ export class People {
    * `null`, `[]` e omitir continuam sendo "não mexe". Campo fora da lista aceita é recusado
    * (422 `PERSON_CLEAR_FIELD_INVALID`), e por um identificador EXTRA a API recusa (409
    * `PERSON_CLEAR_NOT_OWN_RECORD`): só se limpa a própria ficha.
+   *
+   * `document` é o CPF — e a pessoa é ÚNICA: o mesmo CPF é sempre o mesmo cadastro. Id
+   * desconhecido + CPF existente → `merged_into` com o id principal; id de uma ficha + CPF de
+   * outra → as duas são mescladas na hora. `null` não apaga. Erros: 422
+   * `PERSON_DOCUMENT_INVALID` e 409 `PERSON_DOCUMENT_CONFLICT` (a ficha já tem outro CPF).
    * `PUT /customers/{customer_external_id}/people/{person_external_id}`
    */
   upsert(

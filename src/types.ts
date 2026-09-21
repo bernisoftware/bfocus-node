@@ -265,6 +265,8 @@ export interface Person {
   name: string;
   email: string | null;
   phone: string | null;
+  /** CPF da pessoa, só os 11 dígitos (`null` = não informado). */
+  document: string | null;
   role: string | null;
   /** Pode abrir o widget/portal do cliente. */
   access: boolean;
@@ -312,6 +314,17 @@ export interface PersonUpsertParams {
   /** Identifica a pessoa já cadastrada (sem duplicar). */
   email?: string | null;
   phone?: string | null;
+  /**
+   * CPF da pessoa, com ou sem máscara (a resposta traz só os 11 dígitos).
+   *
+   * A PESSOA É ÚNICA: o mesmo CPF é sempre o mesmo cadastro, em qualquer produto. Id
+   * desconhecido + CPF de uma ficha existente → a resposta vem com `merged_into` = id
+   * principal dela (o seu id vira identificador extra). Id de uma ficha + CPF de OUTRA → as
+   * duas são mescladas na hora (`merged_into` = a que tinha o CPF). `null`/vazio NÃO apaga (não
+   * é campo do `clear`). Erros: 422 `PERSON_DOCUMENT_INVALID` (CPF inválido) e 409
+   * `PERSON_DOCUMENT_CONFLICT` (a ficha já tem OUTRO CPF — nunca troca sozinho).
+   */
+  document?: string | null;
   role?: string | null;
   /** Acesso ao widget/portal. Padrão ao criar: `true`. */
   access?: boolean | null;
